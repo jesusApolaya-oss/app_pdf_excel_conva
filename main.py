@@ -8,11 +8,6 @@ from typing import Optional, Dict, Any, List
 import flet as ft
 import pdfplumber
 import pandas as pd
-
-
-# =========================
-# 1) Modelo de datos
-# =========================
 @dataclass
 class ConvaHeader:
     apellidos_nombres: Optional[str] = None
@@ -26,11 +21,6 @@ class ConvaHeader:
     observaciones: Optional[str] = None
     nombre_pdf: Optional[str] = None
     ruta_pdf: Optional[str] = None
-
-
-# =========================
-# 2) Utilidades
-# =========================
 def _clean_spaces(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
@@ -72,10 +62,6 @@ def _extract_first_compiled(patterns: List[re.Pattern], text: str) -> Optional[s
                 return _clean_spaces(val)
     return None
 
-
-# =========================
-# 3) Patrones compilados
-# =========================
 PATRONES_NOMBRE = _compile_patterns([r"Apellidos\s+y\s+Nombres:\s*([^\n]+)"])
 PATRONES_CODIGO = _compile_patterns([r"\bID\s*Estudiante:\s*(N\d+)", r"\bCódigo:\s*(N\d+)"])
 PATRONES_CARRERA = _compile_patterns([r"Carrera\s+en\s+UPN:\s*([^\n]+)", r"Carrera\s+UPN:\s*([^\n]+)"])
@@ -92,10 +78,6 @@ PATRONES_TOTAL = _compile_patterns([
     r"\bTotal\s+([0-9]+)\b",
 ])
 
-
-# =========================
-# 4) Extracción eficiente (stop temprano)
-# =========================
 def extract_conva_header(pdf_path: str, max_pages: int = 4) -> ConvaHeader:
     nombre_pdf = os.path.basename(pdf_path)
 
@@ -207,11 +189,6 @@ def abrir_archivo(path: str):
         subprocess.Popen(["open", path])
     else:
         subprocess.Popen(["xdg-open", path])
-
-
-# =========================
-# 5) Flet App (sin tabla) + PubSub
-# =========================
 def main(page: ft.Page):
     page.title = "Extractor Convalidaciones (PDF → Excel)"
     page.theme_mode = ft.ThemeMode.LIGHT
