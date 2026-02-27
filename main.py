@@ -8,6 +8,11 @@ from typing import Optional, Dict, Any, List
 import flet as ft
 import pdfplumber
 import pandas as pd
+
+# ✅ Tkinter (selector nativo Windows)
+from tkinter import Tk, filedialog
+
+
 @dataclass
 class ConvaHeader:
     apellidos_nombres: Optional[str] = None
@@ -21,6 +26,8 @@ class ConvaHeader:
     observaciones: Optional[str] = None
     nombre_pdf: Optional[str] = None
     ruta_pdf: Optional[str] = None
+
+
 def _clean_spaces(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
@@ -62,6 +69,7 @@ def _extract_first_compiled(patterns: List[re.Pattern], text: str) -> Optional[s
                 return _clean_spaces(val)
     return None
 
+
 PATRONES_NOMBRE = _compile_patterns([r"Apellidos\s+y\s+Nombres:\s*([^\n]+)"])
 PATRONES_CODIGO = _compile_patterns([r"\bID\s*Estudiante:\s*(N\d+)", r"\bCódigo:\s*(N\d+)"])
 PATRONES_CARRERA = _compile_patterns([r"Carrera\s+en\s+UPN:\s*([^\n]+)", r"Carrera\s+UPN:\s*([^\n]+)"])
@@ -78,6 +86,7 @@ PATRONES_TOTAL = _compile_patterns([
     r"\bTotal\s+([0-9]+)\b",
 ])
 
+
 def extract_conva_header(pdf_path: str, max_pages: int = 4) -> ConvaHeader:
     nombre_pdf = os.path.basename(pdf_path)
 
@@ -92,10 +101,9 @@ def extract_conva_header(pdf_path: str, max_pages: int = 4) -> ConvaHeader:
     observ = None
 
     found = 0
-    need_min = 7  # cuando ya tenemos suficiente, paramos
+    need_min = 7
 
     with pdfplumber.open(pdf_path) as pdf:
-        # PDFs encriptados / no legibles
         if getattr(pdf, "is_encrypted", False):
             raise ValueError("PDF encriptado/no legible")
 
@@ -108,39 +116,48 @@ def extract_conva_header(pdf_path: str, max_pages: int = 4) -> ConvaHeader:
 
             if nombre_raw is None:
                 nombre_raw = _extract_first_compiled(PATRONES_NOMBRE, txt)
-                if nombre_raw: found += 1
+                if nombre_raw:
+                    found += 1
 
             if codigo is None:
                 codigo = _extract_first_compiled(PATRONES_CODIGO, txt)
-                if codigo: found += 1
+                if codigo:
+                    found += 1
 
             if carrera_raw is None:
                 carrera_raw = _extract_first_compiled(PATRONES_CARRERA, txt)
-                if carrera_raw: found += 1
+                if carrera_raw:
+                    found += 1
 
             if campus is None:
                 campus = _extract_first_compiled(PATRONES_CAMPUS, txt)
-                if campus: found += 1
+                if campus:
+                    found += 1
 
             if plan is None:
                 plan = _extract_first_compiled(PATRONES_PLAN, txt)
-                if plan: found += 1
+                if plan:
+                    found += 1
 
             if fecha is None:
                 fecha = _extract_first_compiled(PATRONES_FECHA, txt)
-                if fecha: found += 1
+                if fecha:
+                    found += 1
 
             if version is None:
                 version = _extract_first_compiled(PATRONES_VERSION, txt)
-                if version: found += 1
+                if version:
+                    found += 1
 
             if total is None:
                 total = _extract_first_compiled(PATRONES_TOTAL, txt)
-                if total: found += 1
+                if total:
+                    found += 1
 
             if observ is None:
                 observ = _extraer_observacion_paquete(txt)
-                if observ: found += 1
+                if observ:
+                    found += 1
 
             if found >= need_min:
                 break
@@ -185,10 +202,12 @@ def abrir_archivo(path: str):
         raise FileNotFoundError(f"No existe: {path}")
     if os.name == "nt":
         os.startfile(path)  # type: ignore
-    elif os.uname().sysname == "Darwin":
+    elif hasattr(os, "uname") and os.uname().sysname == "Darwin":
         subprocess.Popen(["open", path])
     else:
         subprocess.Popen(["xdg-open", path])
+
+
 def main(page: ft.Page):
     page.title = "Extractor Convalidaciones (PDF → Excel)"
     page.theme_mode = ft.ThemeMode.LIGHT
@@ -221,9 +240,10 @@ def main(page: ft.Page):
     lbl_actual = ft.Text("", selectable=True, size=12, color=ft.Colors.GREY_700)
     progress = ft.ProgressBar(value=0, expand=True, visible=False)
 
-    btn_pick = ft.ElevatedButton("Seleccionar PDFs", icon=ft.Icons.UPLOAD_FILE)
-    btn_export = ft.ElevatedButton("Exportar a Excel", icon=ft.Icons.SAVE_ALT)
-    btn_open = ft.ElevatedButton("Abrir Excel", icon=ft.Icons.FOLDER_OPEN)
+    # ✅ Flet 0.81+: usa Button
+    btn_pick = ft.Button("Seleccionar PDFs", icon=ft.Icons.UPLOAD_FILE)
+    btn_export = ft.Button("Exportar a Excel", icon=ft.Icons.SAVE_ALT)
+    btn_open = ft.Button("Abrir Excel", icon=ft.Icons.FOLDER_OPEN)
     btn_clear = ft.OutlinedButton("Limpiar", icon=ft.Icons.DELETE_OUTLINE)
     btn_cancel = ft.OutlinedButton("Cancelar", icon=ft.Icons.STOP_CIRCLE, disabled=True)
 
@@ -233,9 +253,7 @@ def main(page: ft.Page):
         btn_open.disabled = not enabled
         btn_clear.disabled = not enabled
 
-    # --- PubSub handler (UI thread)
     def on_pubsub_message(msg: Any):
-        # msg es dict: {"type": "...", ...}
         t = msg.get("type")
 
         if t == "progress":
@@ -250,18 +268,15 @@ def main(page: ft.Page):
             progress.visible = False
             btn_cancel.disabled = True
             set_enabled(True)
-
             status.value = msg.get("status", "Listo ✅")
             lbl_actual.value = ""
             page.update()
 
         elif t == "error":
-            # error general (no por fila)
             running_flag["running"] = False
             progress.visible = False
             btn_cancel.disabled = True
             set_enabled(True)
-
             status.value = msg.get("status", "Ocurrió un error.")
             page.update()
 
@@ -274,7 +289,6 @@ def main(page: ft.Page):
                 page.update()
                 return
             df = pd.DataFrame(registros, columns=columns)
-
         df.to_excel(excel_path, index=False)
         status.value = f"Excel exportado ✅: {excel_path}"
         page.update()
@@ -311,21 +325,34 @@ def main(page: ft.Page):
     btn_clear.on_click = limpiar
     btn_cancel.on_click = cancel
 
-    def on_files_picked(e: ft.FilePickerResultEvent):
-        if not e.files:
-            status.value = "No se seleccionaron archivos."
-            page.update()
-            return
-
+    # ✅ Selección de PDFs con Tkinter (sin FilePicker de Flet)
+    def pick_pdfs_with_tk(_):
         if running_flag["running"]:
             status.value = "Ya hay un proceso en ejecución."
             page.update()
             return
 
+        root = Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)  # asegura que el diálogo salga delante
+        paths = filedialog.askopenfilenames(
+            title="Seleccionar PDFs",
+            filetypes=[("PDF", "*.pdf")]
+        )
+        root.destroy()
+
+        if not paths:
+            status.value = "No se seleccionaron archivos."
+            page.update()
+            return
+
+        start_processing(list(paths))
+
+    def start_processing(paths: List[str]):
         cancel_flag["stop"] = False
         running_flag["running"] = True
 
-        total_files = len(e.files)
+        total_files = len(paths)
         status.value = f"Procesando {total_files} PDF(s)..."
         progress.visible = True
         progress.value = 0
@@ -333,20 +360,17 @@ def main(page: ft.Page):
         set_enabled(False)
         page.update()
 
-        files = list(e.files)
-
         def worker():
             ok = 0
             errores = 0
-
             try:
-                for i, f in enumerate(files, start=1):
+                for i, pdf_path in enumerate(paths, start=1):
                     if cancel_flag["stop"]:
                         break
 
-                    current_name = os.path.basename(f.path)
+                    current_name = os.path.basename(pdf_path)
                     try:
-                        h = extract_conva_header(f.path, max_pages=4)
+                        h = extract_conva_header(pdf_path, max_pages=4)
                         row = header_to_row(h)
                         ok += 1
                     except Exception as ex:
@@ -374,7 +398,7 @@ def main(page: ft.Page):
                             "type": "progress",
                             "p": p,
                             "status": st,
-                            "current": f"PDF actual: {current_name}"
+                            "current": f"PDF actual: {current_name}",
                         })
 
                 if cancel_flag["stop"]:
@@ -389,13 +413,7 @@ def main(page: ft.Page):
 
         threading.Thread(target=worker, daemon=True).start()
 
-    file_picker = ft.FilePicker(on_result=on_files_picked)
-    page.overlay.append(file_picker)
-
-    btn_pick.on_click = lambda _: file_picker.pick_files(
-        allow_multiple=True,
-        allowed_extensions=["pdf"],
-    )
+    btn_pick.on_click = pick_pdfs_with_tk
 
     firma = ft.Row(
         controls=[ft.Text("Elaborado por: Ing Jesus Apolaya", italic=True, size=12, color=ft.Colors.GREY_700)],
@@ -406,9 +424,10 @@ def main(page: ft.Page):
         ft.Column(
             controls=[
                 ft.Text("Extractor de Convalidaciones (PDF → Excel)", size=20, weight=ft.FontWeight.BOLD),
-                ft.Text("Procesa 1 por 1 y genera un Excel final. Sin tabla en pantalla (más rápido).",
-                        size=12, color=ft.Colors.GREY_700),
-
+                ft.Text(
+                    "Procesa 1 por 1 y genera un Excel final. Sin tabla en pantalla (más rápido).",
+                    size=12, color=ft.Colors.GREY_700
+                ),
                 ft.Row([btn_pick, btn_export, btn_open, btn_clear, btn_cancel], wrap=True),
                 progress,
                 lbl_actual,
@@ -423,5 +442,4 @@ def main(page: ft.Page):
 
 
 if __name__ == "__main__":
-    # pip install flet pdfplumber pandas openpyxl
-    ft.app(target=main)
+    ft.run(main)
