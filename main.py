@@ -15,6 +15,7 @@ from tkinter import Tk, filedialog
 
 @dataclass
 class ConvaHeader:
+    titulo_pdf: Optional[str] = None  # ✅ NUEVO: primer encabezado
     apellidos_nombres: Optional[str] = None
     codigo: Optional[str] = None
     carrera_upn: Optional[str] = None
@@ -30,6 +31,57 @@ class ConvaHeader:
 
 def _clean_spaces(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
+
+
+def _extraer_titulo_pdf(text: str) -> Optional[str]:
+    """
+    Devuelve la primera línea 'útil' del PDF (primer encabezado).
+    Filtra líneas típicas del cuerpo (Apellidos y Nombres, Código, etc.)
+    """
+    if not text:
+        return None
+
+    lines = [_clean_spaces(l) for l in text.splitlines()]
+    lines = [l for l in lines if l]
+
+    if not lines:
+        return None
+
+    blacklist_prefix = (
+        "apellidos y nombres",
+        "id estudiante",
+        "código",
+        "codigo",
+        "carrera en upn",
+        "carrera upn",
+        "campus",
+        "plan de estudios",
+        "fecha",
+        "versión",
+        "version",
+        "total",
+        "observaciones",
+    )
+
+    for l in lines:
+        low = l.lower()
+
+        if len(l) < 4:
+            continue
+
+        if low.startswith(blacklist_prefix):
+            continue
+
+        # Si quieres ignorar encabezados tipo "Universidad Privada del Norte"
+        # descomenta estas líneas:
+        # if "universidad privada del norte" in low:
+        #     continue
+        # if low.strip() == "upn":
+        #     continue
+
+        return l
+
+    return lines[0]
 
 
 def _limpiar_nombre(nombre_raw: Optional[str]) -> Optional[str]:
@@ -74,7 +126,7 @@ PATRONES_NOMBRE = _compile_patterns([r"Apellidos\s+y\s+Nombres:\s*([^\n]+)"])
 PATRONES_CODIGO = _compile_patterns([r"\bID\s*Estudiante:\s*(N\d+)", r"\bCódigo:\s*(N\d+)"])
 PATRONES_CARRERA = _compile_patterns([r"Carrera\s+en\s+UPN:\s*([^\n]+)", r"Carrera\s+UPN:\s*([^\n]+)"])
 PATRONES_CAMPUS = _compile_patterns([r"Campus:\s*([^\n]+)"])
-PATRONES_PLAN = _compile_patterns([r"Plan\s+de\s+Estudios:\s*([0-9]+)"])
+PATRONES_PLAN = _compile_patterns([r"Plan\s+de\s+Estudios:\s*([A-Za-z0-9.\-]+)"])
 PATRONES_FECHA = _compile_patterns([r"\bFecha:\s*([0-9]{1,2}/[0-9]{1,2}/[0-9]{4})"])
 PATRONES_VERSION = _compile_patterns([
     r"Versión\s+ExcelConva:\s*([0-9.]+)",
@@ -90,6 +142,7 @@ PATRONES_TOTAL = _compile_patterns([
 def extract_conva_header(pdf_path: str, max_pages: int = 4) -> ConvaHeader:
     nombre_pdf = os.path.basename(pdf_path)
 
+    titulo = None
     nombre_raw = None
     codigo = None
     carrera_raw = None
@@ -113,6 +166,10 @@ def extract_conva_header(pdf_path: str, max_pages: int = 4) -> ConvaHeader:
             txt = pdf.pages[i].extract_text() or ""
             if not txt.strip():
                 continue
+
+            # ✅ título: se toma de la primera página que tenga texto
+            if titulo is None:
+                titulo = _extraer_titulo_pdf(txt)
 
             if nombre_raw is None:
                 nombre_raw = _extract_first_compiled(PATRONES_NOMBRE, txt)
@@ -159,7 +216,7 @@ def extract_conva_header(pdf_path: str, max_pages: int = 4) -> ConvaHeader:
                 if observ:
                     found += 1
 
-            if found >= need_min:
+            if found >= need_min and titulo is not None:
                 break
 
     carrera_limpia = None
@@ -167,6 +224,7 @@ def extract_conva_header(pdf_path: str, max_pages: int = 4) -> ConvaHeader:
         carrera_limpia = _clean_spaces(re.sub(r"\s+Modalidad:.*$", "", carrera_raw, flags=re.IGNORECASE))
 
     return ConvaHeader(
+        titulo_pdf=titulo,
         apellidos_nombres=_limpiar_nombre(nombre_raw),
         codigo=codigo,
         carrera_upn=carrera_limpia,
@@ -184,6 +242,7 @@ def extract_conva_header(pdf_path: str, max_pages: int = 4) -> ConvaHeader:
 def header_to_row(h: ConvaHeader) -> Dict[str, Any]:
     d = asdict(h)
     return {
+        "Título PDF": d["titulo_pdf"],
         "Apellidos y Nombres": d["apellidos_nombres"],
         "Código": d["codigo"],
         "Carrera en UPN": d["carrera_upn"],
@@ -218,6 +277,7 @@ def main(page: ft.Page):
     excel_path = os.path.join(BASE_DIR, "resultado_conva.xlsx")
 
     columns = [
+        "Título PDF",
         "Apellidos y Nombres",
         "Código",
         "Carrera en UPN",
@@ -334,7 +394,7 @@ def main(page: ft.Page):
 
         root = Tk()
         root.withdraw()
-        root.attributes("-topmost", True)  # asegura que el diálogo salga delante
+        root.attributes("-topmost", True)
         paths = filedialog.askopenfilenames(
             title="Seleccionar PDFs",
             filetypes=[("PDF", "*.pdf")]
@@ -376,6 +436,7 @@ def main(page: ft.Page):
                     except Exception as ex:
                         errores += 1
                         row = {
+                            "Título PDF": None,
                             "Apellidos y Nombres": None,
                             "Código": None,
                             "Carrera en UPN": None,
